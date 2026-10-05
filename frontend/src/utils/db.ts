@@ -3,10 +3,11 @@ import type { Plot } from '../types/plot';
 import type { TreeRecord } from '../types/tree';
 import type { RegenShrub } from '../types/regen';
 import type { RecheckDiff } from '../types/recheck';
+import type { ImportBatch } from '../types/offline';
 import { newId } from './id';
 
 export const DB_NAME = 'gbforestplot';
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 export const LS_VERSION_KEY = 'gbforestplot:db-version';
 
 class ForestPlotDB extends Dexie {
@@ -14,6 +15,7 @@ class ForestPlotDB extends Dexie {
   trees!: Table<TreeRecord, string>;
   regens!: Table<RegenShrub, string>;
   rechecks!: Table<RecheckDiff, string>;
+  importBatches!: Table<ImportBatch, string>;
 
   constructor() {
     super(DB_NAME);
@@ -46,6 +48,19 @@ class ForestPlotDB extends Dexie {
             if (row.measuredAt === undefined) row.measuredAt = Date.now();
           });
       });
+    this.version(3)
+      .stores({
+        regens: 'id, plotId, layer, species, round, heightCm, updatedAt',
+        importBatches: 'id, packageId, status, receivedAt',
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('regens')
+          .toCollection()
+          .modify((row: any) => {
+            if (row.updatedAt === undefined) row.updatedAt = Date.now();
+          });
+      });
   }
 }
 
@@ -75,6 +90,24 @@ export async function saveRecheckDiffs(diffs: RecheckDiff[]): Promise<void> {
 export async function loadRecheckDiffs(plotId: string): Promise<RecheckDiff[]> {
   const rows = await db.rechecks.where('plotId').equals(plotId).toArray();
   return rows.sort((a, b) => a.treeNo.localeCompare(b.treeNo));
+}
+
+/** 导入批次：按 packageId 幂等查询 */
+export async function findBatchByPackage(packageId: string): Promise<ImportBatch | undefined> {
+  return db.importBatches.where('packageId').equals(packageId).first();
+}
+
+export async function saveBatch(batch: ImportBatch): Promise<void> {
+  await db.importBatches.put(batch);
+}
+
+export async function listBatches(): Promise<ImportBatch[]> {
+  const rows = await db.importBatches.toArray();
+  return rows.sort((a, b) => b.receivedAt - a.receivedAt);
+}
+
+export async function deleteBatch(id: string): Promise<void> {
+  await db.importBatches.delete(id);
 }
 
 /** 首次进入灌入示范样地与两期样木数据 */
@@ -229,6 +262,7 @@ export async function ensureSeedData(): Promise<void> {
       distribution: '团状',
       browseDamage: '轻度',
       round: 2,
+      updatedAt: now - 6 * day,
     },
     {
       id: newId('regen'),
@@ -241,6 +275,7 @@ export async function ensureSeedData(): Promise<void> {
       distribution: '均匀',
       browseDamage: '无',
       round: 2,
+      updatedAt: now - 6 * day,
     },
     {
       id: newId('regen'),
@@ -253,6 +288,7 @@ export async function ensureSeedData(): Promise<void> {
       distribution: '团状',
       browseDamage: '中度',
       round: 2,
+      updatedAt: now - 6 * day,
     },
     {
       id: newId('regen'),
@@ -265,6 +301,7 @@ export async function ensureSeedData(): Promise<void> {
       distribution: '均匀',
       browseDamage: '无',
       round: 2,
+      updatedAt: now - 6 * day,
     },
   ];
 

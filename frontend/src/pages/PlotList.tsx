@@ -18,13 +18,14 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { PlusOutlined, ReloadOutlined, SwapOutlined } from '@ant-design/icons';
 import { usePlotStore } from '../stores/plotStore';
 import { useTreeStore } from '../stores/treeStore';
 import { useRegenStore } from '../stores/regenStore';
 import { usePlotFilter } from '../hooks/usePlotFilter';
 import PlotCard from '../components/common/PlotCard';
 import { FOREST_TYPES, PLOT_SHAPES, type PlotDraft, type PlotShape } from '../types/plot';
+import { downloadPackage, exportPlotPackage } from '../utils/offline';
 
 const EMPTY: PlotDraft = {
   plotNo: '',
@@ -92,6 +93,17 @@ export default function PlotList() {
     setToast(`已建立样地「${created.plotNo}」`);
   };
 
+  /** 导出单样地离线包（含样木、样方与复查比对存档），供外业队员携带 */
+  const exportPlot = async (plotId: string, plotNo: string) => {
+    const pkg = await exportPlotPackage(plotId);
+    if (!pkg) {
+      setError('样地不存在，导出失败');
+      return;
+    }
+    downloadPackage(pkg);
+    setToast(`已导出样地「${plotNo}」离线包`);
+  };
+
   return (
     <Space direction="vertical" size={14} style={{ width: '100%' }}>
       <Space wrap align="center">
@@ -101,12 +113,16 @@ export default function PlotList() {
         <Tag>共 {plots.length} 个样地</Tag>
         <Tag color="blue">筛选命中 {result.length} 个</Tag>
         <div style={{ flex: 1 }} />
+        <Button icon={<SwapOutlined />} onClick={() => navigate('/merge')}>
+          离线合并
+        </Button>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
           新建样地
         </Button>
       </Space>
 
       {toast ? <Alert type="success" showIcon message={toast} closable onClose={() => setToast('')} /> : null}
+      {error && !open ? <Alert type="error" showIcon message={error} closable onClose={() => setError('')} /> : null}
 
       <Row gutter={12}>
         <Col span={6}>
@@ -215,6 +231,9 @@ export default function PlotList() {
                     </Button>
                     <Button size="small" type="link" onClick={() => navigate(`/summary/${plot.id}`)}>
                       林分汇总
+                    </Button>
+                    <Button size="small" type="link" onClick={() => void exportPlot(plot.id, plot.plotNo)}>
+                      导出离线包
                     </Button>
                     <Button size="small" danger={!plot.locked} onClick={() => toggleLock(plot.id)}>
                       {plot.locked ? '解锁往期' : '锁定往期'}

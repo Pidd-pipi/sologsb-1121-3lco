@@ -22,14 +22,15 @@ export const useRegenStore = create<RegenState>((set, get) => ({
     set({ items: rows, loaded: true });
   },
   async add(draft) {
-    const record: RegenShrub = { ...draft, id: newId('regen') };
+    const record: RegenShrub = { ...draft, id: newId('regen'), updatedAt: Date.now() };
     await db.regens.put(record);
     set({ items: [...get().items, record] });
     return record;
   },
   async update(id, patch) {
-    await db.regens.update(id, patch);
-    set({ items: get().items.map((it) => (it.id === id ? { ...it, ...patch } : it)) });
+    const next = { ...patch, updatedAt: Date.now() };
+    await db.regens.update(id, next);
+    set({ items: get().items.map((it) => (it.id === id ? { ...it, ...next } : it)) });
   },
   async remove(id) {
     await db.regens.delete(id);
