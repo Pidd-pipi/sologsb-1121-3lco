@@ -1,3 +1,5 @@
+import type { FieldTimes } from './common';
+
 /** 样木状态 */
 export type TreeStatus = '活立木' | '枯立木' | '倒木' | '采伐';
 
@@ -37,7 +39,10 @@ export interface TreeRecord {
   remark: string;
   /** 所属复查期次 */
   round: number;
+  /** 现场（补）测时间，无字段级时间时作为整株回退时间 */
   measuredAt: number;
+  /** 各字段现场补测时间，离线合并时同字段按此时序取新 */
+  fieldTimes?: FieldTimes;
 }
 
 export type TreeRecordDraft = Omit<TreeRecord, 'id' | 'measuredAt'>;

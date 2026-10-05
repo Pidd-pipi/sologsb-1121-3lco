@@ -3,10 +3,11 @@ import type { Plot } from '../types/plot';
 import type { TreeRecord } from '../types/tree';
 import type { RegenShrub } from '../types/regen';
 import type { RecheckDiff } from '../types/recheck';
+import type { ImportBatch } from '../types/package';
 import { newId } from './id';
 
 export const DB_NAME = 'gbforestplot';
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 export const LS_VERSION_KEY = 'gbforestplot:db-version';
 
 class ForestPlotDB extends Dexie {
@@ -14,6 +15,7 @@ class ForestPlotDB extends Dexie {
   trees!: Table<TreeRecord, string>;
   regens!: Table<RegenShrub, string>;
   rechecks!: Table<RecheckDiff, string>;
+  importBatches!: Table<ImportBatch, string>;
 
   constructor() {
     super(DB_NAME);
@@ -46,6 +48,30 @@ class ForestPlotDB extends Dexie {
             if (row.measuredAt === undefined) row.measuredAt = Date.now();
           });
       });
+    // v3：样地/样方补记录修改时间与字段级补测时间；新增离线包导入批次表
+    this.version(3)
+      .stores({
+        plots: 'id, plotNo, locality, forestType, surveyRound, locked, createdAt',
+        trees: 'id, plotId, treeNo, species, round, status, measuredAt',
+        regens: 'id, plotId, layer, species, round, heightCm',
+        rechecks: 'id, plotId, baseRound, targetRound, treeNo, generatedAt',
+        importBatches: 'id, packageId, status, createdAt',
+      })
+      .upgrade(async (tx) => {
+        const stamp = Date.now();
+        await tx
+          .table('plots')
+          .toCollection()
+          .modify((row: any) => {
+            if (row.updatedAt === undefined) row.updatedAt = row.surveyedAt ?? row.createdAt ?? stamp;
+          });
+        await tx
+          .table('regens')
+          .toCollection()
+          .modify((row: any) => {
+            if (row.updatedAt === undefined) row.updatedAt = stamp;
+          });
+      });
   }
 }
 
@@ -75,6 +101,25 @@ export async function saveRecheckDiffs(diffs: RecheckDiff[]): Promise<void> {
 export async function loadRecheckDiffs(plotId: string): Promise<RecheckDiff[]> {
   const rows = await db.rechecks.where('plotId').equals(plotId).toArray();
   return rows.sort((a, b) => a.treeNo.localeCompare(b.treeNo));
+}
+
+/** 按包指纹查找历史批次（含已成功的，用于二次导入判重） */
+export async function findBatchByPackageId(packageId: string): Promise<ImportBatch | undefined> {
+  const rows = await db.importBatches.where('packageId').equals(packageId).toArray();
+  return rows.sort((a, b) => b.createdAt - a.createdAt)[0];
+}
+
+export async function saveImportBatch(batch: ImportBatch): Promise<void> {
+  await db.importBatches.put(batch);
+}
+
+export async function listImportBatches(): Promise<ImportBatch[]> {
+  const rows = await db.importBatches.orderBy('createdAt').reverse().toArray();
+  return rows;
+}
+
+export async function deleteImportBatch(id: string): Promise<void> {
+  await db.importBatches.delete(id);
 }
 
 /** 首次进入灌入示范样地与两期样木数据 */

@@ -13,6 +13,32 @@ interface PlotState {
   remove: (id: string) => Promise<void>;
 }
 
+const FIELD_KEYS = new Set([
+  'locality',
+  'lng',
+  'lat',
+  'shape',
+  'area',
+  'elevation',
+  'slope',
+  'aspect',
+  'forestType',
+  'canopyDensity',
+  'dominantSpecies',
+  'surveyRound',
+  'surveyedAt',
+  'crew',
+  'locked',
+]);
+
+function stampFields(patch: Partial<Plot>, when: number): { patch: Partial<Plot>; fieldTimes: Plot['fieldTimes'] } {
+  const fieldTimes: Plot['fieldTimes'] = {};
+  Object.keys(patch).forEach((k) => {
+    if (FIELD_KEYS.has(k)) fieldTimes[k] = when;
+  });
+  return { patch, fieldTimes };
+}
+
 export const usePlotStore = create<PlotState>((set, get) => ({
   items: [],
   loaded: false,
@@ -21,14 +47,24 @@ export const usePlotStore = create<PlotState>((set, get) => ({
     set({ items: rows, loaded: true });
   },
   async add(draft) {
-    const record: Plot = { ...draft, id: newId('plot'), createdAt: Date.now() };
+    const now = Date.now();
+    const { fieldTimes } = stampFields(draft, now);
+    const record: Plot = { ...draft, id: newId('plot'), createdAt: now, updatedAt: now, fieldTimes };
     await db.plots.put(record);
     set({ items: [record, ...get().items] });
     return record;
   },
   async update(id, patch) {
-    await db.plots.update(id, patch);
-    set({ items: get().items.map((it) => (it.id === id ? { ...it, ...patch } : it)) });
+    const target = get().items.find((it) => it.id === id);
+    const now = Date.now();
+    const { fieldTimes: stamps } = stampFields(patch, now);
+    const nextPatch: Partial<Plot> = {
+      ...patch,
+      updatedAt: now,
+      fieldTimes: { ...(target?.fieldTimes ?? {}), ...stamps },
+    };
+    await db.plots.update(id, nextPatch);
+    set({ items: get().items.map((it) => (it.id === id ? { ...it, ...nextPatch } : it)) });
   },
   async toggleLock(id) {
     const target = get().items.find((it) => it.id === id);

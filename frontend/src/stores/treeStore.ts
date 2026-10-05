@@ -14,6 +14,27 @@ interface TreeState {
   byPlot: (plotId: string, round?: number) => TreeRecord[];
 }
 
+const FIELD_KEYS = new Set([
+  'species',
+  'dbhCm',
+  'heightM',
+  'underBranchH',
+  'crownWidth',
+  'status',
+  'origin',
+  'healthClass',
+  'tiltDeg',
+  'remark',
+]);
+
+function stampFields(patch: Partial<TreeRecord>, when: number): TreeRecord['fieldTimes'] {
+  const fieldTimes: TreeRecord['fieldTimes'] = {};
+  Object.keys(patch).forEach((k) => {
+    if (FIELD_KEYS.has(k)) fieldTimes[k] = when;
+  });
+  return fieldTimes;
+}
+
 export const useTreeStore = create<TreeState>((set, get) => ({
   items: [],
   loaded: false,
@@ -23,24 +44,34 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     set({ items: rows, loaded: true });
   },
   async add(draft) {
-    const record: TreeRecord = { ...draft, id: newId('tree'), measuredAt: Date.now() };
+    const now = Date.now();
+    const record: TreeRecord = { ...draft, id: newId('tree'), measuredAt: now, fieldTimes: stampFields(draft, now) };
     await db.trees.put(record);
     set({ items: [...get().items, record] });
     return record;
   },
   async addMany(drafts) {
+    const now = Date.now();
     const records: TreeRecord[] = drafts.map((d) => ({
       ...d,
       id: newId('tree'),
-      measuredAt: Date.now(),
+      measuredAt: now,
+      fieldTimes: stampFields(d, now),
     }));
     await db.trees.bulkPut(records);
     set({ items: [...get().items, ...records] });
     return records;
   },
   async update(id, patch) {
-    await db.trees.update(id, patch);
-    set({ items: get().items.map((it) => (it.id === id ? { ...it, ...patch } : it)) });
+    const target = get().items.find((it) => it.id === id);
+    const now = Date.now();
+    const nextPatch: Partial<TreeRecord> = {
+      ...patch,
+      measuredAt: Math.max(target?.measuredAt ?? 0, now),
+      fieldTimes: { ...(target?.fieldTimes ?? {}), ...stampFields(patch, now) },
+    };
+    await db.trees.update(id, nextPatch);
+    set({ items: get().items.map((it) => (it.id === id ? { ...it, ...nextPatch } : it)) });
   },
   async remove(id) {
     await db.trees.delete(id);

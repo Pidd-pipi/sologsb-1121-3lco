@@ -4,6 +4,7 @@ import {
   Alert,
   Button,
   Card,
+  Checkbox,
   Col,
   Empty,
   Input,
@@ -17,13 +18,15 @@ import {
   Statistic,
   Tag,
   Typography,
+  message,
 } from 'antd';
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { DownloadOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { usePlotStore } from '../stores/plotStore';
 import { useTreeStore } from '../stores/treeStore';
 import { useRegenStore } from '../stores/regenStore';
 import { usePlotFilter } from '../hooks/usePlotFilter';
 import PlotCard from '../components/common/PlotCard';
+import { buildOfflinePackage, downloadPackage } from '../utils/package';
 import { FOREST_TYPES, PLOT_SHAPES, type PlotDraft, type PlotShape } from '../types/plot';
 
 const EMPTY: PlotDraft = {
@@ -59,6 +62,9 @@ export default function PlotList() {
   const [draft, setDraft] = useState<PlotDraft>(EMPTY);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportIds, setExportIds] = useState<string[]>([]);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     if (!toast) return;
@@ -92,6 +98,33 @@ export default function PlotList() {
     setToast(`已建立样地「${created.plotNo}」`);
   };
 
+  const treeCountByPlot = useMemo(() => {
+    const map = new Map<string, number>();
+    trees.forEach((t) => map.set(t.plotId, (map.get(t.plotId) ?? 0) + 1));
+    return map;
+  }, [trees]);
+  const regenCountByPlot = useMemo(() => {
+    const map = new Map<string, number>();
+    regens.forEach((r) => map.set(r.plotId, (map.get(r.plotId) ?? 0) + 1));
+    return map;
+  }, [regens]);
+
+  const doExport = async () => {
+    if (exportIds.length === 0) {
+      message.warning('请先勾选要打包的样地');
+      return;
+    }
+    setExporting(true);
+    try {
+      const pkg = await buildOfflinePackage(exportIds);
+      const name = downloadPackage(pkg);
+      message.success(`已导出离线包「${name}」，含样地 ${pkg.plots.length} 块、样木 ${pkg.trees.length} 株、样方 ${pkg.regens.length} 条`);
+      setExportOpen(false);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <Space direction="vertical" size={14} style={{ width: '100%' }}>
       <Space wrap align="center">
@@ -101,6 +134,9 @@ export default function PlotList() {
         <Tag>共 {plots.length} 个样地</Tag>
         <Tag color="blue">筛选命中 {result.length} 个</Tag>
         <div style={{ flex: 1 }} />
+        <Button icon={<DownloadOutlined />} onClick={() => { setExportIds(plots.map((p) => p.id)); setExportOpen(true); }}>
+          导出离线包
+        </Button>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
           新建样地
         </Button>
@@ -226,6 +262,55 @@ export default function PlotList() {
           ))}
         </Row>
       )}
+
+      <Modal
+        open={exportOpen}
+        title="导出现场外业离线包"
+        onCancel={() => setExportOpen(false)}
+        onOk={doExport}
+        confirmLoading={exporting}
+        okText="导出 JSON 包"
+        width={620}
+      >
+        <Space direction="vertical" size={10} style={{ width: '100%', marginTop: 8 }}>
+          <Alert
+            type="info"
+            showIcon
+            message="包内含所选样地档案及其全部期次的样木与样方记录；回队后在「离线合并」中逐对象并入，旧包也能读入。"
+          />
+          <Space>
+            <Checkbox
+              indeterminate={exportIds.length > 0 && exportIds.length < plots.length}
+              checked={plots.length > 0 && exportIds.length === plots.length}
+              onChange={(e) => setExportIds(e.target.checked ? plots.map((p) => p.id) : [])}
+            >
+              全选（{plots.length} 块样地）
+            </Checkbox>
+            <Typography.Text type="secondary">
+              已选 {exportIds.length} 块 · 样木 {exportIds.reduce((s, id) => s + (treeCountByPlot.get(id) ?? 0), 0)} 株 · 样方{' '}
+              {exportIds.reduce((s, id) => s + (regenCountByPlot.get(id) ?? 0), 0)} 条
+            </Typography.Text>
+          </Space>
+          <Checkbox.Group
+            style={{ width: '100%' }}
+            value={exportIds}
+            onChange={(vals) => setExportIds(vals.map(String))}
+          >
+            <Row gutter={[8, 8]}>
+              {plots.map((p) => (
+                <Col span={12} key={p.id}>
+                  <Checkbox value={p.id}>
+                    {p.plotNo} · {p.locality}
+                    <Typography.Text type="secondary">
+                      （{treeCountByPlot.get(p.id) ?? 0} 株 / {regenCountByPlot.get(p.id) ?? 0} 条）
+                    </Typography.Text>
+                  </Checkbox>
+                </Col>
+              ))}
+            </Row>
+          </Checkbox.Group>
+        </Space>
+      </Modal>
 
       <Modal
         open={open}

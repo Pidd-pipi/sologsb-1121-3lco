@@ -1,3 +1,5 @@
+import type { FieldTimes } from './common';
+
 /** 样地形状 */
 export type PlotShape = '方形' | '圆形';
 
@@ -34,6 +36,10 @@ export interface Plot {
   /** 往期数据是否锁定 */
   locked: boolean;
   createdAt: number;
+  /** 档案最后修改时间（v3 补，旧数据迁移为 surveyedAt） */
+  updatedAt?: number;
+  /** 各字段现场补测/修改时间，离线合并时同字段按此时序取新 */
+  fieldTimes?: FieldTimes;
 }
 
 export type PlotDraft = Omit<Plot, 'id' | 'createdAt'>;

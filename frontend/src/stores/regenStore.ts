@@ -13,6 +13,16 @@ interface RegenState {
   byPlot: (plotId: string, round?: number) => RegenShrub[];
 }
 
+const FIELD_KEYS = new Set(['heightCm', 'count', 'ageGroup', 'distribution', 'browseDamage']);
+
+function stampFields(patch: Partial<RegenShrub>, when: number): RegenShrub['fieldTimes'] {
+  const fieldTimes: RegenShrub['fieldTimes'] = {};
+  Object.keys(patch).forEach((k) => {
+    if (FIELD_KEYS.has(k)) fieldTimes[k] = when;
+  });
+  return fieldTimes;
+}
+
 export const useRegenStore = create<RegenState>((set, get) => ({
   items: [],
   loaded: false,
@@ -22,14 +32,22 @@ export const useRegenStore = create<RegenState>((set, get) => ({
     set({ items: rows, loaded: true });
   },
   async add(draft) {
-    const record: RegenShrub = { ...draft, id: newId('regen') };
+    const now = Date.now();
+    const record: RegenShrub = { ...draft, id: newId('regen'), updatedAt: now, fieldTimes: stampFields(draft, now) };
     await db.regens.put(record);
     set({ items: [...get().items, record] });
     return record;
   },
   async update(id, patch) {
-    await db.regens.update(id, patch);
-    set({ items: get().items.map((it) => (it.id === id ? { ...it, ...patch } : it)) });
+    const target = get().items.find((it) => it.id === id);
+    const now = Date.now();
+    const nextPatch: Partial<RegenShrub> = {
+      ...patch,
+      updatedAt: now,
+      fieldTimes: { ...(target?.fieldTimes ?? {}), ...stampFields(patch, now) },
+    };
+    await db.regens.update(id, nextPatch);
+    set({ items: get().items.map((it) => (it.id === id ? { ...it, ...nextPatch } : it)) });
   },
   async remove(id) {
     await db.regens.delete(id);

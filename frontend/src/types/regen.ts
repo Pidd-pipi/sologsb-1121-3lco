@@ -1,3 +1,5 @@
+import type { FieldTimes } from './common';
+
 /** 更新层位 */
 export type RegenLayer = '更新苗' | '灌木' | '草本';
 
@@ -27,6 +29,10 @@ export interface RegenShrub {
   distribution: Distribution;
   browseDamage: BrowseDamage;
   round: number;
+  /** 样方记录最后修改时间（v3 补） */
+  updatedAt?: number;
+  /** 各字段现场补测/修改时间，离线合并时同字段按此时序取新 */
+  fieldTimes?: FieldTimes;
 }
 
 export type RegenShrubDraft = Omit<RegenShrub, 'id'>;
